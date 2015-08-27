@@ -1,0 +1,210 @@
+<apex:page standardController="Opportunity" extensions="LineItemProvider" docType="html-5.0">
+
+   	<script>
+
+		/*############### CONFIGURABLE ################
+			dataColumns - tuple[string apiField <,string displayName> ] (Columns for table to display from OpportunityLineItems)
+        */
+
+		var dataColumns = [["Name","Product"], ["Quantity"], ["UnitPrice","Sales Price"],
+                           ["Reseller_Price__c","Reseller Price"],["TotalPrice","Total Price"],["Discount","Discount %"],
+                          	["Exclude_EAR__c","Exclude EAR"],["Exclude_EAU__c","Exclude EAU"],["Est_Annual_Units__c","Est Annual Units"],
+                          	 ["Est_Annual_Revenue__c","Est Annual Revenue"],["Description"]];
+
+       	//############################################
+
+    	var _actionHTML = '<a target="_parent" href="/{{lineId}}/e?retURL=/{{ret}}" class="actionLink">Edit</a>&nbsp;|&nbsp;';
+    	_actionHTML += '<a target="_parent" href="#" class="actionLink" onclick="doDelete(\'{{lineId}}\');">Del</a>'
+    </script>
+
+    <style>
+        .data-table .tHeader td {
+            min-width:50px;
+            padding:10px;
+            background: #aaa;
+        }
+    	.data-table {
+        	border-collapse: none;
+        }
+		form[hidden=true]{
+        	display:none;
+        }
+	</style>
+
+    <apex:pageBlock>
+
+        <div class="pbHeader">
+          <table>
+
+            <tr>
+                <td class="pbTitle"><h3>Products (Custom Table)</h3></td>
+                <td class="pbButton">
+                    <apex:form>
+                        <apex:commandButton action="{!UrlFor($Action.OpportunityLineItem.AddProduct,opportunity.Id,null,true)}" value="Add Product"/>
+                        <apex:commandButton action="{!UrlFor($Action.OpportunityLineItem.EditAllProduct,opportunity.Id,null,true)}" value="Edit All"/>
+                        <apex:commandButton action="{!UrlFor($Action.OpportunityLineItem.ChoosePricebook,opportunity.Id,null,true)}" value="Choose Pricebook"/>
+                        <apex:commandButton action="{!UrlFor($Action.OpportunityLineItem.Sort,opportunity.Id,null,true)}" value="Sort"/>
+                    </apex:form>
+                </td>
+              </tr>
+            </table>
+        </div>
+
+      <!-- PLACEHOLDER FOR DYNAMIC DATA GENERATION -->
+        <table id="data-tab" class="list" border="0" cellspacing="0" cellpadding="0">
+        </table>
+
+      <!-- HIDDEN FORM FOR DELETE BUTTON ACTION -->
+        <apex:form html-data-name="did-form" html-hidden="true">
+            <apex:repeat value="{!lineIds}" var="i">
+                <apex:commandLink html-did="{!i}" value="{!i}"  action="{!DelLineItem}" onclick="if(!confirm('Are you sure you want to delete this item?')){return false};">
+                    <apex:param assignTo="{!toDelete}" name="toDelete" value="{!i}"/>
+                </apex:commandLink>
+            </apex:repeat>
+        </apex:form>
+
+        <!-- BACKEND SCRIPT (READ COMMENTS WHERE PROVIDED) -->
+            <script>
+            	var oppName = "{!opportunity.Name}"
+            	var objs = {!ItemProvider};
+            	var formElem = null;
+
+
+        		/**
+                 *	Waits for the document to render before rendering the table
+                 *	using SalesForce data.
+                 *
+                 *	@return void
+                 *
+                 */
+            	document.addEventListener("DOMContentLoaded",function(){
+                   	for(var i=0;i<objs.data.length;i++){
+                        	objs.data[i]['Name'] = objs.data[i]['Name'].split(oppName)[1];
+                        }
+                    //Ensure Table cell is removed from display to prevent ghosting.
+                    for(var i=0;i<document.forms.length;i++){
+						if(document.forms[i].getAttribute('data-name')==='did-form'){
+                            formElem=document.forms[i];
+                            document.forms[i].parentElement.style.display='hidden';
+							}
+						}
+
+                    //Ensure that Actions row is always rendered
+                    var tempString = '<tr class="headerRow"><th>Actions</th>';
+
+
+                    	for(var i=0;i<dataColumns.length;i++){
+
+ 	                           tempString += '<th>'+(dataColumns[i].length>1?dataColumns[i][1]:dataColumns[i][0])+'</th>';
+                            }
+
+                    	tempString+='</tr>';
+                    	for(var j=0; j<objs.data.length;j++){
+                            var o = (objs.data[j]);
+                            tempString+='<tr class="'+(k%2===0?'even':'odd')+' dataRow" onblur="if (window.hiOff){hiOff(this);}" onfocus="if (window.hiOn){hiOn(this);}" onmouseout="if (window.hiOff){hiOff(this);}" onmouseover="if (window.hiOn){hiOn(this);}"><td>'+_actionHTML.replace(/\{{2}ret\}{2}/g,(location.pathname.split('/')[1]==='servlet'?document.referrer.substring(10).split('/')[1]:location.pathname.substring(1)+location.search)).replace(/\{{2}lineId\}{2}/g,o['Id'])+'</td>';
+                            var ok = Object.keys(objs.data[j]);
+
+
+                            for(var k=0;k<dataColumns.length;k++){
+
+                                var dataValue;
+
+                                /*########### CONFIGURABLE #############
+                                	(JS variables denoted as /variableName/)
+
+                                	/dataColumns[k][0]/ is the column api name.
+
+                                    /o[dataColumns[k][0]]/ is the column value.
+
+                                    To handle specific behavior cases add in the
+                                    Column name case and add the appropriate code to achieve
+                                    The right value. Pass this value to /dataValue/
+
+                                    e.g. to add a special case for Quantity to return
+                                    	'>100' if the quantity is over 100 add:
+
+                                        case 'Quantity': {
+                                        	if(o[dataColumns[k][0]]>100)
+                                            	dataValue='>100';
+                                            else {
+                                            	dataValue=o[dataColumns[k][0]];
+                                            }
+                                        	break;
+                                        	}
+
+                                    if currency format is required (e.g. 10,000.00), add the hook
+                                      .toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')
+
+                                    if just commas are needed (e.g. 10,000) add the hook
+                                    .replace(/\B(?=(\d{3})+(?!\d))/g,',')
+                                */
+                                switch(dataColumns[k][0]){
+                                        case 'Est_Annual_Revenue__c':{
+                                    		dataValue='$'+(o['Est_Annual_Units__c']*o.UnitPrice).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+                                            break;
+                                    		}
+                                        case 'TotalPrice':{
+                                        	if(typeof o[dataColumns[k][0]]==='undefined'){
+                                                dataValue='$'+(o.Quantity*o.UnitPrice).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+                                        	} else {
+                                                dataValue='$'+o.TotalPrice.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')
+                                                }
+                                            break;
+                                            }
+                                        case 'UnitPrice':case 'Reseller_Price__c':{
+                                            if(typeof o[dataColumns[k][0]]==='undefined'){
+                                                	dataValue='';
+
+                                                     break;
+                                                    }
+                                            	dataValue='$'+o[dataColumns[k][0]].toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')
+                                            	break;
+                                            }
+
+                                    	default: {
+                                    		dataValue=o[dataColumns[k][0]];
+                                            break;
+                                			}
+                                            }
+
+                                // CLEANUP OF VALUES
+                                if(typeof dataValue==='undefined'||dataValue.toString().indexOf('NaN')!==-1){
+                                    dataValue='';
+                                    }
+                                // CHANGE TO CHECKBOX IF CHECKBOX TYPE
+                                if(dataValue===true){
+                                    dataValue='<img src="/img/checkbox_checked.gif" alt="Checked" width="21" height="16" class="checkImg" title="Checked">';
+                                    }
+                                if(dataValue===false){
+                                    dataValue='<img src="/img/checkbox_unchecked.gif" alt="Unchecked" width="21" height="16" class="checkImg" title="Unchecked">'
+                                    }
+                                tempString+='<td>'+(dataColumns[k][0]==='Name'?'<a href="/'+o['Id']+'" target="_parent">':'')+dataValue+(dataColumns[k][0]==='Name'?'</a>':'')+'</td>'
+
+
+                                }
+                            }
+                    	//Render the data within the placeholder table
+                    	document.getElementById("data-tab").innerHTML = tempString+"<tr>";
+
+                    });
+
+
+        		/**
+                 *	Deletes an OpportunityLineItem from the database.
+                 *
+                 *	@Param	eid		id value for DOM custom attribute 'did'
+                 *	@return void
+                 *
+                 */
+            	function doDelete(eid){
+                    	var elems = formElem.getElementsByTagName('a');
+                    	for(var i=0;i<elems.length;i++){
+                            if(elems[i].getAttribute('did')===eid){
+                                elems[i].click();
+                                return
+                            	}
+                            }
+                    }
+            </script>
+    </apex:pageBlock>
+</apex:page>
